@@ -41,5 +41,17 @@ def test_analytics_endpoint():
     body = response.json()
     assert 'total_draws' in body
     assert 'missing_matrix' in body
+    assert 'tail_dist' in body
     assert len(body['missing_matrix']) == 49
+
+
+def test_combo_test_endpoint():
+    response = client.post('/api/analytics/combo-test', json={"numbers": [17, 42, 8, 31, 23], "limit": 100, "bet_per_number": 10.0, "odds": 48.0})
+    assert response.status_code == 200
+    body = response.json()
+    assert 'combo_numbers' in body
+    assert 'hits' in body
+    assert 'roi' in body
+    assert 'net_profit' in body
+
 
