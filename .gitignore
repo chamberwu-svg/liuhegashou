@@ -2,6 +2,6 @@
 __pycache__/
 *.pyc
 *.db
-dist/
 node_modules/
 .pytest_cache/
+
