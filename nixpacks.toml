@@ -1,9 +1,14 @@
 # Nixpacks Configuration for Railway Deployment
 [phases.setup]
-nixPkgs = ["python312", "gcc", "libgomp"]
+nixPkgs = ["python312", "gcc", "libgomp", "nodejs_20"]
 
 [phases.install]
-cmds = ["pip install --upgrade pip", "pip install -r ai-lottery-lab/requirements.txt"]
+cmds = [
+    "pip install --upgrade pip",
+    "pip install -r ai-lottery-lab/requirements.txt",
+    "cd ai-lottery-lab/frontend && npm install && npm run build"
+]
 
 [start]
 cmd = "cd ai-lottery-lab/backend && PYTHONPATH=. uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+
