@@ -36,12 +36,27 @@
     <div class="card combo-sim-card">
       <div class="sim-header">
         <h3>💰 彩票购买组合模拟测试与 ROI 盈亏分析 (Lottery Combo Simulation)</h3>
-        <div class="quick-selectors">
-          <span>一键载入组合：</span>
-          <button @click="loadComboPreset('hot')" class="chip-btn">🔥 载入热号 TOP 5</button>
-          <button @click="loadComboPreset('ai_top5')" class="chip-btn primary">🤖 载入 AI 预测 TOP 5</button>
-          <button @click="loadComboPreset('red')" class="chip-btn red">🎨 载入全部红波号</button>
-          <button @click="clearCombo" class="chip-btn danger">🗑️ 清空选号</button>
+        <div class="quick-selectors-container">
+          <div class="selector-group">
+            <span class="group-label">🤖 AI/热号复式预设：</span>
+            <button @click="loadComboPreset('ai_top6')" class="chip-btn primary">🤖 AI 精选 6码</button>
+            <button @click="loadComboPreset('ai_top12')" class="chip-btn primary">🤖 AI 精选 12码</button>
+            <button @click="loadComboPreset('ai_top24')" class="chip-btn primary">🤖 AI 半盘 24码</button>
+            <button @click="loadComboPreset('ai_top36')" class="chip-btn primary font-bold">🤖 AI 大包号 36码</button>
+            <button @click="loadComboPreset('hot')" class="chip-btn warning">🔥 热号 TOP 5</button>
+            <button @click="loadComboPreset('hot_top10')" class="chip-btn warning">🔥 热号 TOP 10</button>
+            <button @click="loadComboPreset('cold_top5')" class="chip-btn info">❄️ 极冷遗漏 TOP 5</button>
+          </div>
+          <div class="selector-group margin-top-xs">
+            <span class="group-label">🎨 波色/形态全包预设：</span>
+            <button @click="loadComboPreset('red')" class="chip-btn red">🎨 红波(17码)</button>
+            <button @click="loadComboPreset('blue')" class="chip-btn blue">🎨 蓝波(17码)</button>
+            <button @click="loadComboPreset('green')" class="chip-btn green">🎨 绿波(15码)</button>
+            <button @click="loadComboPreset('big')" class="chip-btn default">⚖️ 大号(25码)</button>
+            <button @click="loadComboPreset('small')" class="chip-btn default">⚖️ 小号(24码)</button>
+            <button @click="loadComboPreset('odd')" class="chip-btn default">🔢 单号(25码)</button>
+            <button @click="loadComboPreset('even')" class="chip-btn default">🔢 双号(24码)</button>
+          </div>
         </div>
       </div>
 
@@ -332,13 +347,49 @@ function clearCombo() {
 }
 
 function loadComboPreset(preset) {
-  if (preset === 'hot' && analytics.value && analytics.value.hot_numbers) {
+  const greenBalls = new Set([5, 6, 11, 16, 17, 21, 22, 27, 28, 32, 33, 38, 39, 43, 44, 49])
+  if (!analytics.value || !analytics.value.missing_matrix) {
+    if (preset === 'red') selectedComboNumbers.value = Array.from(redBalls)
+    else if (preset === 'blue') selectedComboNumbers.value = Array.from(blueBalls)
+    else if (preset === 'green') selectedComboNumbers.value = Array.from(greenBalls)
+    return
+  }
+
+
+  const sortedMatrix = [...analytics.value.missing_matrix].sort((a, b) => b.hot_score - a.hot_score)
+  const numbersSorted = sortedMatrix.map(item => item.number)
+
+  if (preset === 'ai_top6') {
+    selectedComboNumbers.value = numbersSorted.slice(0, 6)
+  } else if (preset === 'ai_top12') {
+    selectedComboNumbers.value = numbersSorted.slice(0, 12)
+  } else if (preset === 'ai_top24') {
+    selectedComboNumbers.value = numbersSorted.slice(0, 24)
+  } else if (preset === 'ai_top36') {
+    selectedComboNumbers.value = numbersSorted.slice(0, 36)
+  } else if (preset === 'hot') {
     selectedComboNumbers.value = analytics.value.hot_numbers.map(h => h.number)
-  } else if (preset === 'ai_top5') {
-    selectedComboNumbers.value = [17, 42, 8, 31, 23]
+  } else if (preset === 'hot_top10') {
+    selectedComboNumbers.value = numbersSorted.slice(0, 10)
+  } else if (preset === 'cold_top5') {
+    selectedComboNumbers.value = analytics.value.cold_numbers.map(c => c.number)
   } else if (preset === 'red') {
     selectedComboNumbers.value = Array.from(redBalls)
+  } else if (preset === 'blue') {
+    selectedComboNumbers.value = Array.from(blueBalls)
+  } else if (preset === 'green') {
+    selectedComboNumbers.value = Array.from(greenBalls)
+  } else if (preset === 'big') {
+    selectedComboNumbers.value = Array.from({length: 25}, (_, i) => i + 25)
+  } else if (preset === 'small') {
+    selectedComboNumbers.value = Array.from({length: 24}, (_, i) => i + 1)
+  } else if (preset === 'odd') {
+    selectedComboNumbers.value = Array.from({length: 49}, (_, i) => i + 1).filter(n => n % 2 !== 0)
+  } else if (preset === 'even') {
+    selectedComboNumbers.value = Array.from({length: 49}, (_, i) => i + 1).filter(n => n % 2 === 0)
   }
+
+  runComboSimulation()
 }
 
 async function runComboSimulation() {
@@ -510,6 +561,35 @@ onMounted(() => {
 }
 
 /* 组合模拟测试板块样式 */
+.quick-selectors-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fafafa;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #f0f0f0;
+}
+.selector-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.group-label {
+  font-size: 12px;
+  font-weight: bold;
+  color: #555;
+  width: 150px;
+}
+.chip-btn.warning { background: #fffbe6; color: #fa8c16; border-color: #ffe58f; }
+.chip-btn.info { background: #e6fffb; color: #13c2c2; border-color: #87e8de; }
+.chip-btn.blue { background: #e6f7ff; color: #1890ff; border-color: #91d5ff; }
+.chip-btn.green { background: #f6ffed; color: #52c41a; border-color: #b7eb8f; }
+.chip-btn.default { background: #f5f5f5; color: #595959; border-color: #d9d9d9; }
+.font-bold { font-weight: bold; }
+.margin-top-xs { margin-top: 4px; }
+
 .combo-sim-card {
   display: flex;
   flex-direction: column;
