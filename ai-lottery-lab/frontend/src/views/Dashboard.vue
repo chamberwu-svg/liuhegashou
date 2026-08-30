@@ -58,8 +58,12 @@
           <button @click="applyPreset('hot')" :class="['preset-btn', { active: activePreset === 'hot' }]">🔥 追热强化 (XGB+LGB 70%)</button>
           <button @click="applyPreset('cold')" :class="['preset-btn', { active: activePreset === 'cold' }]">❄️ 冷号博弈 (Bayes 50%)</button>
           <button @click="applyPreset('ai')" :class="['preset-btn', { active: activePreset === 'ai' }]">🤖 深度学习主导 (LSTM 50%)</button>
+          <button @click="applyPreset('markov_state')" :class="['preset-btn', { active: activePreset === 'markov_state' }]">🔄 状态转移主导 (Markov 50%)</button>
+          <button @click="applyPreset('tree_ensemble')" :class="['preset-btn', { active: activePreset === 'tree_ensemble' }]">🌲 树模型大融合 (RF+XGB+LGB 75%)</button>
+          <button @click="applyPreset('stat_ml')" :class="['preset-btn', { active: activePreset === 'stat_ml' }]">📈 统计与机器学习各半 (Markov+Bayes 50% vs ML 50%)</button>
         </div>
       </div>
+
 
       <!-- 动态权重滑动调优 -->
       <div class="weight-sliders">
@@ -95,6 +99,7 @@
         <div class="filter-options">
           <label><input type="checkbox" v-model="filters.minConsensus" /> 仅保留强一致号 (支持度 ≥ 4/6)</label>
           <label><input type="checkbox" v-model="filters.excludeLastDraw" /> 过滤上一期刚开特码</label>
+          <label><input type="checkbox" v-model="filters.excludeLast3Draws" /> 过滤近 3 期已开特码</label>
           <div class="select-inline">
             <span>支持度要求：</span>
             <select v-model="filters.consensusLevel">
@@ -104,8 +109,34 @@
               <option value="6">6/6 全模型支持</option>
             </select>
           </div>
+          <div class="select-inline">
+            <span>波色限定：</span>
+            <select v-model="filters.color">
+              <option value="all">全部波色</option>
+              <option value="RED">仅限红波</option>
+              <option value="BLUE">仅限蓝波</option>
+              <option value="GREEN">仅限绿波</option>
+            </select>
+          </div>
+          <div class="select-inline">
+            <span>大小限定：</span>
+            <select v-model="filters.size">
+              <option value="all">大小不限</option>
+              <option value="BIG">仅限大号 (≥25)</option>
+              <option value="SMALL">仅限小号 (&lt;25)</option>
+            </select>
+          </div>
+          <div class="select-inline">
+            <span>单双限定：</span>
+            <select v-model="filters.oddEven">
+              <option value="all">单双不限</option>
+              <option value="ODD">仅限单号</option>
+              <option value="EVEN">仅限双号</option>
+            </select>
+          </div>
         </div>
       </div>
+
     </div>
 
     <div class="grid-2 margin-top">
@@ -153,15 +184,33 @@ const weights = ref({
 const filters = ref({
   minConsensus: false,
   excludeLastDraw: false,
-  consensusLevel: 'all'
+  excludeLast3Draws: false,
+  consensusLevel: 'all',
+  color: 'all',
+  size: 'all',
+  oddEven: 'all'
 })
+
+// 六合彩波色判断工具
+const redBalls = new Set([1, 2, 7, 8, 12, 13, 18, 19, 23, 24, 29, 30, 34, 35, 40, 45, 46])
+const blueBalls = new Set([3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 32, 36, 37, 41, 42, 47, 48])
+
+function getBallColor(num) {
+  if (redBalls.has(num)) return 'RED'
+  if (blueBalls.has(num)) return 'BLUE'
+  return 'GREEN'
+}
 
 const filteredRankings = computed(() => {
   let list = rankings.value || []
-  if (filters.value.excludeLastDraw && recentDraws.value.length > 0) {
+  if (filters.value.excludeLast3Draws && recentDraws.value.length >= 3) {
+    const last3 = new Set(recentDraws.value.slice(0, 3).map(d => d.special_number))
+    list = list.filter(item => !last3.has(item.number))
+  } else if (filters.value.excludeLastDraw && recentDraws.value.length > 0) {
     const lastNum = recentDraws.value[0].special_number
     list = list.filter(item => item.number !== lastNum)
   }
+
   if (filters.value.consensusLevel !== 'all') {
     const minC = parseInt(filters.value.consensusLevel)
     list = list.filter(item => {
@@ -174,8 +223,30 @@ const filteredRankings = computed(() => {
       return parseInt(parts[0]) >= 4
     })
   }
+
+  if (filters.value.color !== 'all') {
+    list = list.filter(item => getBallColor(item.number) === filters.value.color)
+  }
+
+  if (filters.value.size !== 'all') {
+    if (filters.value.size === 'BIG') {
+      list = list.filter(item => item.number >= 25)
+    } else {
+      list = list.filter(item => item.number < 25)
+    }
+  }
+
+  if (filters.value.oddEven !== 'all') {
+    if (filters.value.oddEven === 'ODD') {
+      list = list.filter(item => item.number % 2 !== 0)
+    } else {
+      list = list.filter(item => item.number % 2 === 0)
+    }
+  }
+
   return list
 })
+
 
 async function fetchPrediction() {
   try {
@@ -211,9 +282,16 @@ function applyPreset(type) {
     weights.value = { markov: 0.10, bayes: 0.50, rf: 0.10, xgb: 0.10, lgb: 0.10, lstm: 0.10 }
   } else if (type === 'ai') {
     weights.value = { markov: 0.05, bayes: 0.05, rf: 0.10, xgb: 0.15, lgb: 0.15, lstm: 0.50 }
+  } else if (type === 'markov_state') {
+    weights.value = { markov: 0.50, bayes: 0.10, rf: 0.10, xgb: 0.10, lgb: 0.10, lstm: 0.10 }
+  } else if (type === 'tree_ensemble') {
+    weights.value = { markov: 0.05, bayes: 0.10, rf: 0.25, xgb: 0.30, lgb: 0.25, lstm: 0.05 }
+  } else if (type === 'stat_ml') {
+    weights.value = { markov: 0.25, bayes: 0.25, rf: 0.10, xgb: 0.15, lgb: 0.15, lstm: 0.10 }
   }
   fetchPrediction()
 }
+
 
 
 async function fetchBacktest() {
