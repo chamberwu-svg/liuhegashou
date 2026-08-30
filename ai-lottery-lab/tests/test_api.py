@@ -33,3 +33,13 @@ def test_backtest_endpoint():
     body = response.json()
     assert 'top5' in body
     assert 'random_baseline' in body
+
+
+def test_analytics_endpoint():
+    response = client.get('/api/analytics?limit=100')
+    assert response.status_code == 200
+    body = response.json()
+    assert 'total_draws' in body
+    assert 'missing_matrix' in body
+    assert len(body['missing_matrix']) == 49
+

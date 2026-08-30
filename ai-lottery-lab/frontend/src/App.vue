@@ -16,6 +16,7 @@
 
     <main class="app-content">
       <Dashboard v-if="currentTab === 'dashboard'" />
+      <Analytics v-else-if="currentTab === 'analytics'" />
       <Training v-else-if="currentTab === 'training'" />
       <Models v-else-if="currentTab === 'models'" />
       <Backtest v-else-if="currentTab === 'backtest'" />
@@ -26,6 +27,7 @@
 <script setup>
 import { ref } from 'vue'
 import Dashboard from './views/Dashboard.vue'
+import Analytics from './views/Analytics.vue'
 import Training from './views/Training.vue'
 import Models from './views/Models.vue'
 import Backtest from './views/Backtest.vue'
@@ -33,12 +35,14 @@ import Backtest from './views/Backtest.vue'
 const currentTab = ref('dashboard')
 
 const tabs = [
-  { id: 'dashboard', name: '📊 预测中心 Dashboard' },
+  { id: 'dashboard', name: '🎯 预测中心 Dashboard' },
+  { id: 'analytics', name: '📊 数据看板 Analytics' },
   { id: 'training', name: '⚙️ 模型训练 Training' },
   { id: 'models', name: '🔬 模型分析 Models' },
   { id: 'backtest', name: '📜 历史回测 Backtest' }
 ]
 </script>
+
 
 <style>
 * {
