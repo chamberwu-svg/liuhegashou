@@ -2,8 +2,8 @@
   <div class="analytics-page">
     <div class="header-banner card">
       <div>
-        <h2>📊 数据看板与多维人工验算 Panel</h2>
-        <p class="subtitle">根据 MacauJC / KJ1868 API 调用的实时开奖数据生成多元可视化面板，提供选择性时间跨度、复合条件检索与验算数据导出。</p>
+        <h2>📊 数据看板与彩票组合投注模拟 Panel</h2>
+        <p class="subtitle">根据 MacauJC / KJ1868 真实开奖数据生成多元可视化看板，提供自定义复式彩票组合模拟测试、ROI 盈亏回测及尾数头数分布。</p>
       </div>
       <div class="audit-badge" v-if="analytics">
         <div class="label">数据校验哈希 (SHA256)</div>
@@ -29,6 +29,83 @@
         <button @click="exportCSV" class="btn export-btn" :disabled="!analytics">
           📥 导出人工验算 CSV 报表
         </button>
+      </div>
+    </div>
+
+    <!-- 🎯 重点功能：彩票购买组合模拟测试与 ROI 收益评估板块 -->
+    <div class="card combo-sim-card">
+      <div class="sim-header">
+        <h3>💰 彩票购买组合模拟测试与 ROI 盈亏分析 (Lottery Combo Simulation)</h3>
+        <div class="quick-selectors">
+          <span>一键载入组合：</span>
+          <button @click="loadComboPreset('hot')" class="chip-btn">🔥 载入热号 TOP 5</button>
+          <button @click="loadComboPreset('ai_top5')" class="chip-btn primary">🤖 载入 AI 预测 TOP 5</button>
+          <button @click="loadComboPreset('red')" class="chip-btn red">🎨 载入全部红波号</button>
+          <button @click="clearCombo" class="chip-btn danger">🗑️ 清空选号</button>
+        </div>
+      </div>
+
+      <!-- 01-49 号码快速选择点阵 -->
+      <div class="ball-matrix-select">
+        <span class="matrix-hint">点击球号增删组号 (已选 {{ selectedComboNumbers.length }} 个号码)：</span>
+        <div class="balls-grid">
+          <button
+            v-for="num in 49"
+            :key="num"
+            :class="['ball-pick-btn', getBallColorClass(num), { selected: selectedComboNumbers.includes(num) }]"
+            @click="toggleComboNumber(num)"
+          >
+            {{ String(num).padStart(2, '0') }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 模拟投注参数控制 -->
+      <div class="sim-params">
+        <div class="param-item">
+          <label>每号码单注金额 ($)：</label>
+          <input type="number" v-model.number="simParams.bet_per_number" min="1" max="10000" class="input-num" />
+        </div>
+        <div class="param-item">
+          <label>赔率倍数 (固定特码赔率)：</label>
+          <input type="number" v-model.number="simParams.odds" min="1" max="100" step="0.5" class="input-num" />
+        </div>
+        <button @click="runComboSimulation" class="btn run-sim-btn" :disabled="simulating || selectedComboNumbers.length === 0">
+          {{ simulating ? '⏳ 正在在历史数据中回测模拟...' : '▶ 运行组合历史模拟投注测试' }}
+        </button>
+      </div>
+
+      <!-- 模拟结果展示 -->
+      <div v-if="simResult" class="sim-results-panel">
+        <div class="result-stats-grid">
+          <div class="stat-box">
+            <div class="lbl">组合号码数</div>
+            <div class="val">{{ simResult.combo_size }} 码</div>
+          </div>
+          <div class="stat-box">
+            <div class="lbl">历史中奖次数 / 命中率</div>
+            <div class="val highlight">{{ simResult.hits }} 次 ({{ simResult.win_rate }}%)</div>
+            <div class="sub-lbl">理论概率: {{ simResult.expected_hit_rate }}%</div>
+          </div>
+          <div class="stat-box">
+            <div class="lbl">模拟总投注成本</div>
+            <div class="val">${{ simResult.total_cost }}</div>
+          </div>
+          <div class="stat-box">
+            <div class="lbl">模拟中奖总派彩</div>
+            <div class="val">${{ simResult.total_payout }}</div>
+          </div>
+          <div class="stat-box" :class="{ profit: simResult.net_profit > 0, loss: simResult.net_profit < 0 }">
+            <div class="lbl">模拟净盈亏</div>
+            <div class="val">{{ simResult.net_profit >= 0 ? '+' : '' }}${{ simResult.net_profit }}</div>
+            <div class="sub-lbl">ROI 收益率: {{ simResult.roi }}%</div>
+          </div>
+          <div class="stat-box">
+            <div class="lbl">历史最大连空期数</div>
+            <div class="val warning">{{ simResult.max_consecutive_misses }} 期</div>
+            <div class="sub-lbl">风险评价: {{ simResult.risk_evaluation }}</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -71,7 +148,7 @@
         </div>
       </div>
 
-      <!-- 2. 多元属性分布可视化面板 (波色 / 大小 / 单双) -->
+      <!-- 2. 多元属性分布可视化面板 (波色 / 大小 / 单双 / 尾数) -->
       <div class="grid-2 margin-top">
         <div class="card">
           <h3>🎨 特码波色分布统计</h3>
@@ -126,6 +203,18 @@
                 <div class="part even" :style="{ width: analytics.attr_dist.EVEN.ratio + '%' }">双</div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 尾数 (0-9尾) 分布卡片 -->
+      <div class="card margin-top" v-if="analytics.tail_dist">
+        <h3>🔢 特码 0 - 9 尾数分布统计 (Tail Distribution)</h3>
+        <div class="tail-grid">
+          <div v-for="t in analytics.tail_dist" :key="t.tail" class="tail-card">
+            <div class="tail-title">{{ t.tail }}</div>
+            <div class="tail-count">{{ t.count }} 次</div>
+            <div class="tail-ratio">{{ t.ratio }}%</div>
           </div>
         </div>
       </div>
@@ -210,11 +299,78 @@ const oeFilter = ref('')
 const sortField = ref('number')
 const sortAsc = ref(true)
 
+// 组合模拟测试变量
+const selectedComboNumbers = ref([17, 42, 8, 31, 23])
+const simParams = ref({
+  bet_per_number: 10.0,
+  odds: 48.0
+})
+const simulating = ref(false)
+const simResult = ref(null)
+
+const redBalls = new Set([1, 2, 7, 8, 12, 13, 18, 19, 23, 24, 29, 30, 34, 35, 40, 45, 46])
+const blueBalls = new Set([3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 32, 36, 37, 41, 42, 47, 48])
+
+function getBallColorClass(num) {
+  if (redBalls.has(num)) return 'red'
+  if (blueBalls.has(num)) return 'blue'
+  return 'green'
+}
+
+function toggleComboNumber(num) {
+  const idx = selectedComboNumbers.value.indexOf(num)
+  if (idx >= 0) {
+    selectedComboNumbers.value.splice(idx, 1)
+  } else {
+    selectedComboNumbers.value.push(num)
+  }
+}
+
+function clearCombo() {
+  selectedComboNumbers.value = []
+  simResult.value = null
+}
+
+function loadComboPreset(preset) {
+  if (preset === 'hot' && analytics.value && analytics.value.hot_numbers) {
+    selectedComboNumbers.value = analytics.value.hot_numbers.map(h => h.number)
+  } else if (preset === 'ai_top5') {
+    selectedComboNumbers.value = [17, 42, 8, 31, 23]
+  } else if (preset === 'red') {
+    selectedComboNumbers.value = Array.from(redBalls)
+  }
+}
+
+async function runComboSimulation() {
+  if (selectedComboNumbers.value.length === 0) return
+  simulating.value = true
+  try {
+    const res = await fetch('/api/analytics/combo-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        numbers: selectedComboNumbers.value,
+        limit: parseInt(selectedLimit.value),
+        bet_per_number: simParams.value.bet_per_number,
+        odds: simParams.value.odds
+      })
+    })
+    simResult.value = await res.json()
+  } catch (e) {
+    console.error('Combo sim error:', e)
+  } finally {
+    simulating.value = false
+  }
+}
+
 async function fetchAnalytics() {
   loading.value = true
   try {
     const res = await fetch(`/api/analytics?limit=${selectedLimit.value}`)
     analytics.value = await res.json()
+    if (selectedComboNumbers.value.length > 0) {
+      runComboSimulation()
+    }
   } catch (e) {
     console.error('Fetch analytics error:', e)
   } finally {
@@ -352,6 +508,148 @@ onMounted(() => {
   background: #ccc;
   cursor: not-allowed;
 }
+
+/* 组合模拟测试板块样式 */
+.combo-sim-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-top: 4px solid #722ed1;
+}
+.sim-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.quick-selectors {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.chip-btn {
+  padding: 4px 10px;
+  border: 1px solid #d9d9d9;
+  background: #fafafa;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.chip-btn.primary { background: #e6f7ff; color: #1890ff; border-color: #91d5ff; }
+.chip-btn.red { background: #fff1f0; color: #ff4d4f; border-color: #ffa39e; }
+.chip-btn.danger { background: #fff2e8; color: #fa541c; border-color: #ffbb96; }
+
+.ball-matrix-select {
+  background: #fafafa;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #f0f0f0;
+}
+.matrix-hint {
+  font-size: 13px;
+  color: #555;
+  display: block;
+  margin-bottom: 8px;
+}
+.balls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 6px;
+}
+.ball-pick-btn {
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid #d9d9d9;
+  background: white;
+  color: #333;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+.ball-pick-btn.selected {
+  color: white !important;
+  box-shadow: 0 0 8px rgba(0,0,0,0.3);
+  transform: scale(1.1);
+}
+.ball-pick-btn.red.selected { background: #ff4d4f !important; border-color: #ff4d4f !important; }
+.ball-pick-btn.blue.selected { background: #1890ff !important; border-color: #1890ff !important; }
+.ball-pick-btn.green.selected { background: #52c41a !important; border-color: #52c41a !important; }
+
+.sim-params {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.param-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.input-num {
+  width: 90px;
+  padding: 6px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+}
+.run-sim-btn {
+  background: #722ed1;
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 14px;
+}
+.run-sim-btn:disabled { background: #ccc; cursor: not-allowed; }
+
+.sim-results-panel {
+  background: #f9f0ff;
+  border: 1px solid #d3ade6;
+  padding: 16px;
+  border-radius: 6px;
+}
+.result-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.stat-box {
+  background: white;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #e8e8e8;
+  text-align: center;
+}
+.stat-box .lbl { font-size: 12px; color: #666; margin-bottom: 4px; }
+.stat-box .val { font-size: 18px; font-weight: bold; color: #333; }
+.stat-box .val.highlight { color: #722ed1; }
+.stat-box .val.warning { color: #fa8c16; }
+.stat-box .sub-lbl { font-size: 11px; color: #8c8c8c; margin-top: 2px; }
+.stat-box.profit .val { color: #52c41a; }
+.stat-box.loss .val { color: #ff4d4f; }
+
+.tail-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+.tail-card {
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  padding: 8px;
+  border-radius: 4px;
+  text-align: center;
+}
+.tail-title { font-size: 12px; font-weight: bold; color: #1890ff; }
+.tail-count { font-size: 14px; font-weight: bold; margin: 2px 0; }
+.tail-ratio { font-size: 10px; color: #8c8c8c; }
 
 .loading-state {
   text-align: center;
@@ -580,4 +878,3 @@ onMounted(() => {
   font-size: 12px;
 }
 </style>
-
