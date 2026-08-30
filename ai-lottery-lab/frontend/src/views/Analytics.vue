@@ -2,13 +2,33 @@
   <div class="analytics-page">
     <div class="header-banner card">
       <div>
-        <h2>📊 数据看板与人工验算 Panel</h2>
-        <p class="subtitle">根据 MacauJC / KJ1868 API 调用的实时开奖数据生成多元可视化面板，提供 01-49 号码全量遗漏矩阵供人工校对与验算。</p>
+        <h2>📊 数据看板与多维人工验算 Panel</h2>
+        <p class="subtitle">根据 MacauJC / KJ1868 API 调用的实时开奖数据生成多元可视化面板，提供选择性时间跨度、复合条件检索与验算数据导出。</p>
       </div>
       <div class="audit-badge" v-if="analytics">
         <div class="label">数据校验哈希 (SHA256)</div>
         <div class="code">{{ analytics.audit_checksum }}</div>
         <div class="draw-count">基于近 {{ analytics.total_draws }} 期数据生成</div>
+      </div>
+    </div>
+
+    <!-- 看板跨度与导出工具栏 -->
+    <div class="toolbar-panel card">
+      <div class="tool-group">
+        <label>历史分析数据范围：</label>
+        <select v-model="selectedLimit" @change="fetchAnalytics" class="select-box">
+          <option value="50">最近 50 期 (短期热度)</option>
+          <option value="100">最近 100 期</option>
+          <option value="300">最近 300 期 (标准范围)</option>
+          <option value="500">最近 500 期 (长期形态)</option>
+          <option value="1000">最近 1000 期 (大样本均值)</option>
+        </select>
+      </div>
+
+      <div class="tool-group">
+        <button @click="exportCSV" class="btn export-btn" :disabled="!analytics">
+          📥 导出人工验算 CSV 报表
+        </button>
       </div>
     </div>
 
@@ -110,17 +130,27 @@
         </div>
       </div>
 
-      <!-- 3. 01-49 号码全量人工分析验算大表 -->
+      <!-- 3. 01-49 号码全量人工分析验算大表 (支持多维组合检索) -->
       <div class="card margin-top">
         <div class="table-header">
-          <h3>📋 01 - 49 号码全量遗漏与频次验算矩阵</h3>
+          <h3>📋 01 - 49 号码全量遗漏与多维检索验算矩阵</h3>
           <div class="filter-group">
-            <input type="text" v-model="searchQuery" placeholder="搜索号码 (例如: 17)..." class="search-input" />
+            <input type="text" v-model="searchQuery" placeholder="搜索号码 (例: 17)..." class="search-input" />
             <select v-model="colorFilter" class="filter-select">
               <option value="">全部波色</option>
               <option value="RED">红波</option>
               <option value="BLUE">蓝波</option>
               <option value="GREEN">绿波</option>
+            </select>
+            <select v-model="sizeFilter" class="filter-select">
+              <option value="">大小不限</option>
+              <option value="BIG">大号 (≥25)</option>
+              <option value="SMALL">小号 (&lt;25)</option>
+            </select>
+            <select v-model="oeFilter" class="filter-select">
+              <option value="">单双不限</option>
+              <option value="ODD">单号</option>
+              <option value="EVEN">双号</option>
             </select>
           </div>
         </div>
@@ -172,15 +202,18 @@ import { ref, computed, onMounted } from 'vue'
 
 const analytics = ref(null)
 const loading = ref(true)
+const selectedLimit = ref('300')
 const searchQuery = ref('')
 const colorFilter = ref('')
+const sizeFilter = ref('')
+const oeFilter = ref('')
 const sortField = ref('number')
 const sortAsc = ref(true)
 
 async function fetchAnalytics() {
   loading.value = true
   try {
-    const res = await fetch('/api/analytics?limit=300')
+    const res = await fetch(`/api/analytics?limit=${selectedLimit.value}`)
     analytics.value = await res.json()
   } catch (e) {
     console.error('Fetch analytics error:', e)
@@ -208,6 +241,12 @@ const filteredMatrix = computed(() => {
   if (colorFilter.value) {
     list = list.filter(item => item.color === colorFilter.value)
   }
+  if (sizeFilter.value) {
+    list = list.filter(item => item.size === sizeFilter.value)
+  }
+  if (oeFilter.value) {
+    list = list.filter(item => item.odd_even === oeFilter.value)
+  }
 
   return list.sort((a, b) => {
     let valA = a[sortField.value]
@@ -217,6 +256,19 @@ const filteredMatrix = computed(() => {
     return 0
   })
 })
+
+function exportCSV() {
+  if (!filteredMatrix.value || filteredMatrix.value.length === 0) return
+  let csv = '号码,波色,大小,单双,当前遗漏,最大遗漏,近30期频次,冷热得分\n'
+  filteredMatrix.value.forEach(row => {
+    csv += `${row.number},${row.color},${row.size},${row.odd_even},${row.current_missing},${row.max_missing},${row.frequency_30},${row.hot_score}\n`
+  })
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `lottery_audit_matrix_${selectedLimit.value}draws.csv`
+  link.click()
+}
 
 onMounted(() => {
   fetchAnalytics()
@@ -267,6 +319,38 @@ onMounted(() => {
   font-size: 12px;
   color: #52c41a;
   margin-top: 2px;
+}
+
+.toolbar-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.select-box {
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid #d9d9d9;
+}
+.export-btn {
+  background: #52c41a;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+}
+.export-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
 }
 
 .loading-state {
@@ -404,10 +488,13 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 .filter-group {
   display: flex;
   gap: 10px;
+  flex-wrap: wrap;
 }
 .search-input {
   padding: 6px 12px;
@@ -493,3 +580,4 @@ onMounted(() => {
   font-size: 12px;
 }
 </style>
+

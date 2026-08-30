@@ -45,14 +45,74 @@
 
     <!-- 图表与排名栅格 -->
     <div class="grid-2">
-      <PredictionRanking :rankings="rankings" />
-      <ConsensusChart :rankings="rankings" />
+      <PredictionRanking :rankings="filteredRankings" />
+      <ConsensusChart :rankings="filteredRankings" />
+    </div>
+
+    <!-- 交互式选号策略控制面板与智能条件过滤 -->
+    <div class="strategy-panel card">
+      <div class="strategy-header">
+        <h3>🎛️ AI 预测模型选择性与策略调优 (Predictive Strategy & Custom Weight Tuning)</h3>
+        <div class="preset-buttons">
+          <button @click="applyPreset('balanced')" :class="['preset-btn', { active: activePreset === 'balanced' }]">⚖️ 默认均衡权重</button>
+          <button @click="applyPreset('hot')" :class="['preset-btn', { active: activePreset === 'hot' }]">🔥 追热强化 (XGB+LGB 70%)</button>
+          <button @click="applyPreset('cold')" :class="['preset-btn', { active: activePreset === 'cold' }]">❄️ 冷号博弈 (Bayes 50%)</button>
+          <button @click="applyPreset('ai')" :class="['preset-btn', { active: activePreset === 'ai' }]">🤖 深度学习主导 (LSTM 50%)</button>
+        </div>
+      </div>
+
+      <!-- 动态权重滑动调优 -->
+      <div class="weight-sliders">
+        <div class="slider-item">
+          <span class="label">Markov (马尔可夫): <strong>{{ (weights.markov * 100).toFixed(0) }}%</strong></span>
+          <input type="range" min="0" max="1" step="0.05" v-model.number="weights.markov" @change="onWeightChange" />
+        </div>
+        <div class="slider-item">
+          <span class="label">Bayesian (贝叶斯): <strong>{{ (weights.bayes * 100).toFixed(0) }}%</strong></span>
+          <input type="range" min="0" max="1" step="0.05" v-model.number="weights.bayes" @change="onWeightChange" />
+        </div>
+        <div class="slider-item">
+          <span class="label">Random Forest: <strong>{{ (weights.rf * 100).toFixed(0) }}%</strong></span>
+          <input type="range" min="0" max="1" step="0.05" v-model.number="weights.rf" @change="onWeightChange" />
+        </div>
+        <div class="slider-item">
+          <span class="label">XGBoost: <strong>{{ (weights.xgb * 100).toFixed(0) }}%</strong></span>
+          <input type="range" min="0" max="1" step="0.05" v-model.number="weights.xgb" @change="onWeightChange" />
+        </div>
+        <div class="slider-item">
+          <span class="label">LightGBM: <strong>{{ (weights.lgb * 100).toFixed(0) }}%</strong></span>
+          <input type="range" min="0" max="1" step="0.05" v-model.number="weights.lgb" @change="onWeightChange" />
+        </div>
+        <div class="slider-item">
+          <span class="label">LSTM 神经网络: <strong>{{ (weights.lstm * 100).toFixed(0) }}%</strong></span>
+          <input type="range" min="0" max="1" step="0.05" v-model.number="weights.lstm" @change="onWeightChange" />
+        </div>
+      </div>
+
+      <!-- 智能条件组号过滤器 -->
+      <div class="filter-matrix border-top">
+        <div class="filter-title">🎯 预测号码条件筛选与强一致性过滤：</div>
+        <div class="filter-options">
+          <label><input type="checkbox" v-model="filters.minConsensus" /> 仅保留强一致号 (支持度 ≥ 4/6)</label>
+          <label><input type="checkbox" v-model="filters.excludeLastDraw" /> 过滤上一期刚开特码</label>
+          <div class="select-inline">
+            <span>支持度要求：</span>
+            <select v-model="filters.consensusLevel">
+              <option value="all">不限支持度</option>
+              <option value="4">≥ 4/6 支持</option>
+              <option value="5">≥ 5/6 支持</option>
+              <option value="6">6/6 全模型支持</option>
+            </select>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="grid-2 margin-top">
       <ModelScore />
       <BacktestTable :backtestData="backtestData" />
     </div>
+
 
     <!-- 黑客风格 AI 推理弹窗终端 -->
     <HackerTerminal
@@ -64,12 +124,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import PredictionRanking from '../components/PredictionRanking.vue'
 import ModelScore from '../components/ModelScore.vue'
 import ConsensusChart from '../components/ConsensusChart.vue'
 import BacktestTable from '../components/BacktestTable.vue'
 import HackerTerminal from '../components/HackerTerminal.vue'
+
 
 const rankings = ref([])
 const recentDraws = ref([])
@@ -79,9 +140,47 @@ const syncing = ref(false)
 const syncMsg = ref('')
 const showHackerTerminal = ref(false)
 
+const activePreset = ref('balanced')
+const weights = ref({
+  markov: 0.10,
+  bayes: 0.15,
+  rf: 0.15,
+  xgb: 0.20,
+  lgb: 0.20,
+  lstm: 0.20
+})
+
+const filters = ref({
+  minConsensus: false,
+  excludeLastDraw: false,
+  consensusLevel: 'all'
+})
+
+const filteredRankings = computed(() => {
+  let list = rankings.value || []
+  if (filters.value.excludeLastDraw && recentDraws.value.length > 0) {
+    const lastNum = recentDraws.value[0].special_number
+    list = list.filter(item => item.number !== lastNum)
+  }
+  if (filters.value.consensusLevel !== 'all') {
+    const minC = parseInt(filters.value.consensusLevel)
+    list = list.filter(item => {
+      const parts = (item.consensus || '0/6').split('/')
+      return parseInt(parts[0]) >= minC
+    })
+  } else if (filters.value.minConsensus) {
+    list = list.filter(item => {
+      const parts = (item.consensus || '0/6').split('/')
+      return parseInt(parts[0]) >= 4
+    })
+  }
+  return list
+})
+
 async function fetchPrediction() {
   try {
-    const res = await fetch('/api/predict')
+    const query = new URLSearchParams(weights.value).toString()
+    const res = await fetch(`/api/predict?${query}`)
     const data = await res.json()
     if (data.ranking) {
       rankings.value = data.ranking
@@ -96,6 +195,26 @@ async function fetchPrediction() {
     console.error('Fetch predict error:', e)
   }
 }
+
+function onWeightChange() {
+  activePreset.value = 'custom'
+  fetchPrediction()
+}
+
+function applyPreset(type) {
+  activePreset.value = type
+  if (type === 'balanced') {
+    weights.value = { markov: 0.10, bayes: 0.15, rf: 0.15, xgb: 0.20, lgb: 0.20, lstm: 0.20 }
+  } else if (type === 'hot') {
+    weights.value = { markov: 0.05, bayes: 0.05, rf: 0.20, xgb: 0.35, lgb: 0.35, lstm: 0.00 }
+  } else if (type === 'cold') {
+    weights.value = { markov: 0.10, bayes: 0.50, rf: 0.10, xgb: 0.10, lgb: 0.10, lstm: 0.10 }
+  } else if (type === 'ai') {
+    weights.value = { markov: 0.05, bayes: 0.05, rf: 0.10, xgb: 0.15, lgb: 0.15, lstm: 0.50 }
+  }
+  fetchPrediction()
+}
+
 
 async function fetchBacktest() {
   try {
@@ -293,5 +412,90 @@ onMounted(() => {
 .margin-top {
   margin-top: 10px;
 }
+
+.strategy-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 10px;
+}
+.strategy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.preset-buttons {
+  display: flex;
+  gap: 8px;
+}
+.preset-btn {
+  padding: 6px 12px;
+  border: 1px solid #d9d9d9;
+  background: #fafafa;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+.preset-btn:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+.preset-btn.active {
+  background: #e6f7ff;
+  border-color: #1890ff;
+  color: #1890ff;
+  font-weight: bold;
+}
+
+.weight-sliders {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  background: #fafafa;
+  padding: 14px;
+  border-radius: 6px;
+}
+.slider-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.slider-item .label {
+  font-size: 12px;
+  color: #555;
+}
+.slider-item input[type="range"] {
+  width: 100%;
+}
+
+.filter-matrix {
+  padding-top: 12px;
+}
+.border-top {
+  border-top: 1px solid #f0f0f0;
+}
+.filter-title {
+  font-size: 13px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #333;
+}
+.filter-options {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 13px;
+  color: #555;
+}
+.select-inline select {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #d9d9d9;
+  margin-left: 4px;
+}
 </style>
+
 
