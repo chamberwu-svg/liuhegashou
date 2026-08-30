@@ -92,36 +92,65 @@
 
       <!-- 模拟结果展示 -->
       <div v-if="simResult" class="sim-results-panel">
+        <!-- 账目拆解分析 Header -->
+        <div class="sim-audit-header">
+          <div class="audit-col">
+            <span class="lbl">⚡ 单期投注成本：</span>
+            <strong class="val">{{ simResult.combo_size }} 码 × ${{ simParams.bet_per_number }} = ${{ simResult.cost_per_draw }} / 期</strong>
+          </div>
+          <div class="audit-col">
+            <span class="lbl">🎯 中奖当期派彩：</span>
+            <strong class="val green">${{ simParams.bet_per_number }} × {{ simParams.odds }}倍 = ${{ simResult.payout_per_hit }} (当期净赚 +${{ simResult.net_profit_per_hit }})</strong>
+          </div>
+        </div>
+
         <div class="result-stats-grid">
           <div class="stat-box">
-            <div class="lbl">组合号码数</div>
+            <div class="lbl">组合码数 / 理论概率</div>
             <div class="val">{{ simResult.combo_size }} 码</div>
+            <div class="sub-lbl">理论命中率: {{ simResult.expected_hit_rate }}%</div>
           </div>
+
           <div class="stat-box">
-            <div class="lbl">历史中奖次数 / 命中率</div>
+            <div class="lbl">历史中奖次数 / 实际命中率</div>
             <div class="val highlight">{{ simResult.hits }} 次 ({{ simResult.win_rate }}%)</div>
-            <div class="sub-lbl">理论概率: {{ simResult.expected_hit_rate }}%</div>
+            <div class="sub-lbl">共下注 {{ simResult.total_draws }} 期</div>
           </div>
+
           <div class="stat-box">
-            <div class="lbl">模拟总投注成本</div>
+            <div class="lbl">{{ simResult.total_draws }}期 累计总成本</div>
             <div class="val">${{ simResult.total_cost }}</div>
+            <div class="sub-lbl">${{ simResult.cost_per_draw }}/期 × {{ simResult.total_draws }}期</div>
           </div>
+
           <div class="stat-box">
-            <div class="lbl">模拟中奖总派彩</div>
-            <div class="val">${{ simResult.total_payout }}</div>
+            <div class="lbl">中奖累计总派彩</div>
+            <div class="val green">${{ simResult.total_payout }}</div>
+            <div class="sub-lbl">${{ simResult.payout_per_hit }}/次 × {{ simResult.hits }}次中奖</div>
           </div>
+
           <div class="stat-box" :class="{ profit: simResult.net_profit > 0, loss: simResult.net_profit < 0 }">
-            <div class="lbl">模拟净盈亏</div>
+            <div class="lbl">全期累计净盈亏 (ROI)</div>
             <div class="val">{{ simResult.net_profit >= 0 ? '+' : '' }}${{ simResult.net_profit }}</div>
             <div class="sub-lbl">ROI 收益率: {{ simResult.roi }}%</div>
           </div>
+
           <div class="stat-box">
-            <div class="lbl">历史最大连空期数</div>
+            <div class="lbl">最大连空 / 风险评估</div>
             <div class="val warning">{{ simResult.max_consecutive_misses }} 期</div>
-            <div class="sub-lbl">风险评价: {{ simResult.risk_evaluation }}</div>
+            <div class="sub-lbl">评级: {{ simResult.risk_evaluation }}</div>
           </div>
         </div>
+
+        <!-- 盈亏账本拆解明细提示 -->
+        <div class="payout-formula-breakdown">
+          💡 <strong>盈亏明细推算：</strong>
+          中奖 {{ simResult.hits }} 期共净赚 <span class="green">+${{ simResult.total_hit_profit }}</span>
+          ｜ 未中 {{ simResult.misses }} 期共下注损耗 <span class="red">-${{ simResult.total_miss_loss }}</span>
+          ｜ 全期累计净盈亏 = <strong>{{ simResult.net_profit >= 0 ? '+' : '' }}${{ simResult.net_profit }}</strong>
+        </div>
       </div>
+
     </div>
 
     <!-- 加载中/错误状态 -->
@@ -693,12 +722,43 @@ onMounted(() => {
   border: 1px solid #d3ade6;
   padding: 16px;
   border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
+.sim-audit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid #e9d5ff;
+  font-size: 13px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.audit-col .val { font-size: 14px; color: #333; }
+.audit-col .val.green { color: #52c41a; font-weight: bold; }
+
+.payout-formula-breakdown {
+  background: #fff;
+  border: 1px dashed #d3ade6;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #555;
+  text-align: center;
+}
+.payout-formula-breakdown .green { color: #52c41a; font-weight: bold; }
+.payout-formula-breakdown .red { color: #ff4d4f; font-weight: bold; }
+
 .result-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
 }
+
 .stat-box {
   background: white;
   padding: 10px;

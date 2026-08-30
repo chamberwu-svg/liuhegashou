@@ -127,10 +127,12 @@ def simulate_combo_test(payload: ComboTestRequest) -> Dict[str, Any]:
         return {"error": "No historical data available."}
 
     combo_size = len(combo_numbers)
-    cost_per_draw = combo_size * bet_per_num
+    cost_per_draw = round(combo_size * bet_per_num, 2)
+    payout_per_hit = round(bet_per_num * odds, 2)
+    net_profit_per_hit = round(payout_per_hit - cost_per_draw, 2)
 
     hits = 0
-    total_cost = total_draws * cost_per_draw
+    total_cost = round(total_draws * cost_per_draw, 2)
     total_payout = 0.0
 
     current_miss = 0
@@ -142,17 +144,19 @@ def simulate_combo_test(payload: ComboTestRequest) -> Dict[str, Any]:
     for idx, draw_num in enumerate(history, start=1):
         if draw_num in combo_numbers:
             hits += 1
-            payout = bet_per_num * odds
-            total_payout += payout
+            total_payout += payout_per_hit
             current_consec_hit += 1
             max_consec_hit = max(max_consec_hit, current_consec_hit)
             current_miss = 0
-            hit_details.append({"draw_index": idx, "winning_number": draw_num, "payout": payout})
+            hit_details.append({"draw_index": idx, "winning_number": draw_num, "payout": payout_per_hit})
         else:
             current_miss += 1
             max_miss = max(max_miss, current_miss)
             current_consec_hit = 0
 
+    misses = total_draws - hits
+    total_hit_profit = round(hits * net_profit_per_hit, 2)
+    total_miss_loss = round(misses * cost_per_draw, 2)
     net_profit = round(total_payout - total_cost, 2)
     roi = round((net_profit / max(1.0, total_cost)) * 100, 2)
     win_rate = round((hits / total_draws) * 100, 2)
@@ -172,10 +176,16 @@ def simulate_combo_test(payload: ComboTestRequest) -> Dict[str, Any]:
         "combo_numbers": sorted(list(combo_numbers)),
         "combo_size": combo_size,
         "total_draws": total_draws,
+        "cost_per_draw": cost_per_draw,
+        "payout_per_hit": payout_per_hit,
+        "net_profit_per_hit": net_profit_per_hit,
         "hits": hits,
+        "misses": misses,
+        "total_hit_profit": total_hit_profit,
+        "total_miss_loss": total_miss_loss,
         "win_rate": win_rate,
         "expected_hit_rate": expected_hit_rate,
-        "total_cost": round(total_cost, 2),
+        "total_cost": total_cost,
         "total_payout": round(total_payout, 2),
         "net_profit": net_profit,
         "roi": roi,
@@ -184,4 +194,5 @@ def simulate_combo_test(payload: ComboTestRequest) -> Dict[str, Any]:
         "risk_evaluation": risk_evaluation,
         "hit_details": hit_details[-10:],  # 最近10次中奖记录
     }
+
 
